@@ -1,0 +1,40 @@
+{
+  "name": "end-of-quarter-countdown",
+  "version": "1.0.0",
+  "description": "End of Quarter Countdown — Windows edition",
+  "main": "main.js",
+  "author": "Ian Hawkins <ian@hawkinsmultimedia.net>",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^28.3.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "au.com.hawkinsmultimedia.endofquartercountdown",
+    "productName": "End of Quarter Countdown",
+    "copyright": "Copyright © 2025 Ian Hawkins",
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "nsis": {
+      "oneClick": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "shortcutName": "End of Quarter Countdown"
+    },
+    "files": ["main.js", "preload.js", "renderer/**/*", "assets/**/*"],
+    "extraMetadata": {
+      "main": "main.js"
+    }
+  }
+}

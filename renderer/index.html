@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>End of Quarter Countdown</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      background: #F3F3F3;
+      color: #1A1A1A;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    /* ── Header ───────────────────────────────────────────────── */
+    #header {
+      display: flex;
+      align-items: center;
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid #DEDEDE;
+      gap: 6px;
+    }
+    #fyBadge {
+      background: #0078D4;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    #headerTitle {
+      flex: 1;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .hdr-btn {
+      background: none;
+      border: 1px solid #C0C0C0;
+      border-radius: 6px;
+      padding: 3px 9px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #333;
+    }
+    .hdr-btn:hover { background: #E5E5E5; }
+    #syncBtn.syncing { opacity: .5; pointer-events: none; }
+
+    /* ── Countdown ────────────────────────────────────────────── */
+    #countdown {
+      text-align: center;
+      padding: 18px 12px 14px;
+    }
+    #bigNumber {
+      font-size: 64px;
+      font-weight: 700;
+      line-height: 1;
+      color: #0078D4;
+    }
+    #unitLabel {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: #555;
+      margin-top: 2px;
+    }
+    #weeksLabel {
+      font-size: 12px;
+      color: #888;
+      margin-top: 4px;
+    }
+    #quarterLabel {
+      font-size: 12px;
+      color: #555;
+      margin-top: 6px;
+    }
+
+    /* ── Warning banner ───────────────────────────────────────── */
+    #warningBanner {
+      display: none;
+      background: #FFF4CE;
+      border-top: 1px solid #F0C040;
+      border-bottom: 1px solid #F0C040;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #7A5C00;
+    }
+    #warningBanner b { font-weight: 700; }
+
+    /* ── Editor ───────────────────────────────────────────────── */
+    #editor {
+      display: none;
+      padding: 10px 12px;
+      border-top: 1px solid #DEDEDE;
+    }
+    .q-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 6px;
+      gap: 8px;
+    }
+    .q-row label {
+      width: 76px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: right;
+      flex-shrink: 0;
+      color: #444;
+    }
+    .q-row input[type="date"] {
+      flex: 1;
+      font-size: 12px;
+      padding: 3px 6px;
+      border: 1px solid #C0C0C0;
+      border-radius: 5px;
+      background: #fff;
+      color: #1A1A1A;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .q-row input[type="date"]:focus { outline: 2px solid #0078D4; border-color: transparent; }
+
+    #urlRow { margin-top: 8px; border-top: 1px solid #EBEBEB; padding-top: 8px; }
+    #urlRow label { width: 76px; font-size: 12px; font-weight: 600; color: #444; }
+    #urlInput {
+      flex: 1;
+      font-size: 11px;
+      padding: 3px 6px;
+      border: 1px solid #C0C0C0;
+      border-radius: 5px;
+      background: #fff;
+      font-family: monospace;
+    }
+    #urlInput:focus { outline: 2px solid #0078D4; border-color: transparent; }
+
+    #syncStatus {
+      font-size: 11px;
+      color: #666;
+      padding: 2px 0 0 84px;
+    }
+    #syncStatus.ok  { color: #107C10; }
+    #syncStatus.err { color: #C42B1C; }
+
+    #saveBtn {
+      display: block;
+      margin: 10px auto 0;
+      padding: 5px 28px;
+      background: #0078D4;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #saveBtn:hover { background: #006ABD; }
+
+    /* ── Footer ───────────────────────────────────────────────── */
+    #footer {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-top: 1px solid #DEDEDE;
+      gap: 6px;
+    }
+    #loginRow {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex: 1;
+    }
+    #loginRow input { cursor: pointer; accent-color: #0078D4; }
+    #loginRow label { font-size: 11px; cursor: pointer; }
+    #versionInfo { font-size: 10px; color: #888; flex: 1; text-align: center; }
+    #versionInfo a { color: #0078D4; text-decoration: none; }
+    #versionInfo a:hover { text-decoration: underline; }
+    #quitBtn {
+      background: none;
+      border: 1px solid #C0C0C0;
+      border-radius: 6px;
+      padding: 2px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      color: #555;
+    }
+    #quitBtn:hover { background: #E5E5E5; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div id="header">
+    <div id="fyBadge">FY26</div>
+    <div id="headerTitle">End of Quarter Countdown</div>
+    <button class="hdr-btn" id="syncBtn">↺ Sync</button>
+    <button class="hdr-btn" id="editBtn">✎ Edit</button>
+  </div>
+
+  <!-- Countdown -->
+  <div id="countdown">
+    <div id="bigNumber">—</div>
+    <div id="unitLabel">DAYS LEFT</div>
+    <div id="weeksLabel"></div>
+    <div id="quarterLabel"></div>
+  </div>
+
+  <!-- Warning banner -->
+  <div id="warningBanner">
+    ⚠ <b>FY rollover approaching</b> — fewer than 70 days to the next financial year.
+    Please sync from the website or update your quarter dates.
+  </div>
+
+  <!-- Editor (hidden by default) -->
+  <div id="editor">
+    <!-- 5 quarter rows (labels set by JS) -->
+    <div class="q-row"><label id="lbl0">FY26 Q1</label><input type="date" id="d0" /></div>
+    <div class="q-row"><label id="lbl1">FY26 Q2</label><input type="date" id="d1" /></div>
+    <div class="q-row"><label id="lbl2">FY26 Q3</label><input type="date" id="d2" /></div>
+    <div class="q-row"><label id="lbl3">FY26 Q4</label><input type="date" id="d3" /></div>
+    <div class="q-row"><label id="lbl4">FY27 Q1</label><input type="date" id="d4" /></div>
+    <div class="q-row" id="urlRow">
+      <label for="urlInput">Sync URL</label>
+      <input type="text" id="urlInput" placeholder="https://..." />
+    </div>
+    <div id="syncStatus"></div>
+    <button id="saveBtn">Save Dates</button>
+  </div>
+
+  <!-- Footer -->
+  <div id="footer">
+    <div id="loginRow">
+      <input type="checkbox" id="loginCheck" />
+      <label for="loginCheck">Launch at Login</label>
+    </div>
+    <div id="versionInfo">
+      v1.0 · by <a id="authorLink" href="#">Ian Hawkins</a>
+    </div>
+    <button id="quitBtn">Quit</button>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
