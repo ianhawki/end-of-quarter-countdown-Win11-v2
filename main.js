@@ -11,8 +11,29 @@ const http  = require('http');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 
+// Set the app name BEFORE computing userData path so the settings folder
+// uses the display name ("End of Quarter Countdown") instead of the npm
+// package name ("end-of-quarter-countdown"). Matches the macOS edition.
+app.setName('End of Quarter Countdown');
+
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
 const ICON_PATH     = path.join(__dirname, 'assets', 'icon.ico');
+
+// One-time migration for users who installed an earlier build (where the
+// folder was named end-of-quarter-countdown). Copies their settings.json
+// into the new location and removes the old folder. Best-effort; safe to
+// run on every launch.
+function migrateLegacyUserData() {
+  try {
+    const legacyDir  = path.join(app.getPath('appData'), 'end-of-quarter-countdown');
+    const legacyFile = path.join(legacyDir, 'settings.json');
+    if (fs.existsSync(SETTINGS_PATH)) return;   // new location already populated
+    if (!fs.existsSync(legacyFile))   return;   // nothing to migrate
+    fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
+    fs.copyFileSync(legacyFile, SETTINGS_PATH);
+    fs.rmSync(legacyDir, { recursive: true, force: true });
+  } catch (_) { /* best-effort */ }
+}
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 const DEFAULTS = {
@@ -533,8 +554,6 @@ ipcMain.handle('open-email', () => {
 ipcMain.handle('quit', () => app.quit());
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────
-app.setName('End of Quarter Countdown');
-
 async function firstRunAutoSync() {
   try {
     settings = await syncFromWeb(settings);
@@ -549,6 +568,7 @@ async function firstRunAutoSync() {
 }
 
 app.whenReady().then(() => {
+  migrateLegacyUserData();
   const loaded = loadSettings();
   settings = loaded.settings;
   createTray();
