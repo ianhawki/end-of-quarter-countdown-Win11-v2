@@ -1,6 +1,6 @@
 {
   "name": "end-of-quarter-countdown",
-  "version": "2.5.3",
+  "version": "2.5.4",
   "description": "End of Quarter Countdown — Windows edition",
   "main": "main.js",
   "author": "Ian Hawkins <ian@hawkinsmultimedia.net>",

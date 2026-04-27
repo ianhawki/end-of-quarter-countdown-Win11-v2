@@ -31,6 +31,8 @@ A small Electron desktop app for Windows that lives in the system tray and count
 - Pulls quarter end-dates from a configurable URL
 - Parses dates in `FY26Q1 : 25/10/2025` format (dd/mm/yyyy)
 - Defaults to `https://hawkinsmultimedia.com.au/endofquarter.html`
+- **Auto-syncs on first launch** — when no settings file exists yet, the app silently fetches fresh dates ~1.5 seconds after start. If it fails (offline, VPN, server down) it falls back to the baked-in defaults
+- Manual sync via the cloud button in the popup header, or the **Sync Now** button in the FY rollover warning banner
 - Last-synced timestamp shown in the editor
 - Diagnosable error messages — distinguishes DNS failure / connection refused / timeout / HTTP errors / SSL problems, naming the host
 
@@ -110,6 +112,35 @@ By default Windows 11 puts new system-tray icons in the "show hidden icons" over
 Alternatively: click the `^` chevron, then drag the icon out into the always-visible part of the tray.
 
 This is a one-time Windows setting and persists across app updates. There's no programmatic way for the app to do this for you — Windows 11 makes tray-icon visibility a deliberate user choice.
+
+## Data & troubleshooting
+
+**Where settings live:**
+
+```
+%APPDATA%\End of Quarter Countdown\
+├── settings.json        # Quarter dates, URL, business-days flag, last sync time
+├── app.log              # Diagnostic log (startup path, migration, tray render attempts)
+└── ... (Electron's own cache, cookies, GPU shader cache)
+```
+
+Open it from a terminal:
+
+```powershell
+explorer "$env:APPDATA\End of Quarter Countdown"
+```
+
+**Resetting:** quit the app first (right-click tray &rarr; Quit), then delete `settings.json` and re-launch. The first-run auto-sync will refetch fresh dates.
+
+**Reading the diagnostic log:**
+
+```powershell
+Get-Content "$env:APPDATA\End of Quarter Countdown\app.log"
+```
+
+The log captures startup events: which folder Electron picked for userData, whether the legacy-folder migration ran, every tray-icon render attempt, and reasons for any silent failures. Useful when something visible isn't working.
+
+**Legacy folder migration:** earlier builds (pre-v2.5.1) wrote settings to `%APPDATA%\end-of-quarter-countdown\` (lowercase, hyphenated &mdash; from the npm package name). Recent builds explicitly use `End of Quarter Countdown` (display name, matching the Mac edition). On first launch of v2.5.1+, settings.json is copied over automatically and the legacy folder is removed. If a file in the legacy folder is locked at the time, the cleanup retries on every subsequent launch.
 
 ## Versioning
 
