@@ -19,7 +19,7 @@ A small Electron desktop app for Windows that lives in the system tray and count
 │   ├── index.html       # Countdown UI
 │   └── renderer.js      # UI logic
 ├── package.json         # App metadata + electron-builder config
-└── assets/              # App icons (icon.ico / icon.icns)
+└── assets/              # App icons (icon.ico)
 ```
 
 ## Requirements
@@ -47,16 +47,12 @@ npm start
 Windows installer (NSIS, x64):
 
 ```powershell
-npm run build:win
-```
-
-macOS DMG (requires macOS to sign/notarise properly):
-
-```powershell
-npm run build:mac
+npm run build
 ```
 
 Build artefacts are written to `dist/`.
+
+> This project targets **Windows only**. The macOS edition is a separate project.
 
 ## Versioning
 

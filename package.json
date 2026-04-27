@@ -1,13 +1,12 @@
 {
   "name": "end-of-quarter-countdown",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "End of Quarter Countdown — Windows edition",
   "main": "main.js",
   "author": "Ian Hawkins <ian@hawkinsmultimedia.net>",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac"
+    "build": "electron-builder --win"
   },
   "dependencies": {},
   "devDependencies": {
@@ -22,9 +21,6 @@
       "target": [{ "target": "nsis", "arch": ["x64"] }],
       "icon": "assets/icon.ico",
       "signAndEditExecutable": false
-    },
-    "mac": {
-      "target": "dmg"
     },
     "nsis": {
       "oneClick": true,
