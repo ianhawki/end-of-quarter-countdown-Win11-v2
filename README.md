@@ -54,6 +54,18 @@ Build artefacts are written to `dist/`.
 
 > This project targets **Windows only**. The macOS edition is a separate project.
 
+## Pinning the tray icon (Windows 11)
+
+By default Windows 11 puts new system-tray icons in the "show hidden icons" overflow area (the `^` chevron). To make this app's icon always visible:
+
+- Right-click the taskbar &rarr; **Taskbar settings**
+- Scroll to **Other system tray icons**
+- Find **End of Quarter Countdown** and toggle it **On**
+
+(Alternatively: click the `^` chevron, then drag the icon out into the always-visible part of the tray.)
+
+This is a one-time Windows setting and persists across app updates. There's no programmatic way for the app to do this for you &mdash; Windows 11 makes tray-icon visibility a deliberate user choice.
+
 ## Versioning
 
 This project follows [Semantic Versioning](https://semver.org/):

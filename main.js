@@ -157,8 +157,9 @@ function computeState(settings) {
   const qEnd     = quarterEndDate(quarters[idx]);
   const qStart   = quarterStart(quarters, idx);
 
-  const totalDays = Math.max(1, daysBetween(qStart, qEnd) + 1);
-  const dayOfQ    = Math.min(totalDays, Math.max(1, daysBetween(qStart, today) + 1));
+  const totalDays     = Math.max(1, daysBetween(qStart, qEnd));
+  const daysIntoQ     = Math.max(0, daysBetween(qStart, today));
+  const dayOfQ        = Math.min(totalDays, daysIntoQ + 1);
 
   const calendarDaysRemaining = Math.max(0, daysBetween(today, qEnd));
   const businessDaysRemaining = businessDaysBetween(today, qEnd);
@@ -167,7 +168,7 @@ function computeState(settings) {
   const weeks = Math.floor(days / (settings.businessDays ? 5 : 7));
 
   const weekInQ = Math.max(1, Math.ceil(dayOfQ / 7));
-  const progressPct = Math.min(100, Math.round((dayOfQ / totalDays) * 100));
+  const progressPct = Math.min(100, Math.floor((daysIntoQ / totalDays) * 100));
 
   const warn      = idx === 4 && calendarDaysRemaining < 70;
   const displayQ  = idx === 4 ? 1 : idx + 1;

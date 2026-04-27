@@ -27,9 +27,18 @@
     function draw({ days, warn, bd }) {
       ctx.clearRect(0, 0, 32, 32);
 
-      // Rounded square background
-      ctx.fillStyle = warn ? '#DC5A00' : '#0078D4';
+      // Rounded square background — blue gradient matches popup countdown,
+      // orange gradient when in FY rollover warning window.
       roundRect(0, 0, 32, 32, 6);
+      const grad = ctx.createLinearGradient(0, 0, 0, 32);
+      if (warn) {
+        grad.addColorStop(0, '#FFA040');
+        grad.addColorStop(1, '#DC5A00');
+      } else {
+        grad.addColorStop(0, '#4DA3FF');
+        grad.addColorStop(1, '#2F86FF');
+      }
+      ctx.fillStyle = grad;
       ctx.fill();
 
       // Number text
