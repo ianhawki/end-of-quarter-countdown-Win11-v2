@@ -21,6 +21,8 @@ const authorLink    = document.getElementById('authorLink');
 const urlInput      = document.getElementById('urlInput');
 const syncStatus    = document.getElementById('syncStatus');
 
+const versionLabel  = document.getElementById('versionLabel');
+
 const dateInputs = [0, 1, 2, 3, 4].map(i => document.getElementById(`d${i}`));
 const lblEls     = [0, 1, 2, 3, 4].map(i => document.getElementById(`lbl${i}`));
 
@@ -43,8 +45,9 @@ function fromInputDate(str) {
 }
 
 // ─── Render state ─────────────────────────────────────────────────────────────
-function renderState({ state, settings }) {
+function renderState({ state, settings, appVersion }) {
   currentSettings = settings;
+  if (appVersion) versionLabel.textContent = `v${appVersion}`;
 
   // FY badge + countdown numbers
   fyBadge.textContent = state.fy || settings.financialYear || 'FY';

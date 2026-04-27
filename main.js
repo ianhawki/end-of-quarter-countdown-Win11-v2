@@ -6,96 +6,13 @@ const {
 } = require('electron');
 const path  = require('path');
 const fs    = require('fs');
-const zlib  = require('zlib');
 const https = require('https');
 const http  = require('http');
 
-// ─── Single-instance lock ─────────────────────────────────────────────────────
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 
-// ─── Paths ────────────────────────────────────────────────────────────────────
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
-
-// ─── PNG icon generator (pure Node – no native deps) ─────────────────────────
-function encodePNG(w, h, rgba) {
-  // Build raw scanlines (filter byte 0 = None, then RGB triplets)
-  const rowLen = w * 3;
-  const raw = Buffer.alloc(h * (1 + rowLen));
-  for (let y = 0; y < h; y++) {
-    raw[y * (1 + rowLen)] = 0; // filter type: None
-    for (let x = 0; x < w; x++) {
-      const s = (y * w + x) * 4;
-      const d = y * (1 + rowLen) + 1 + x * 3;
-      raw[d] = rgba[s]; raw[d + 1] = rgba[s + 1]; raw[d + 2] = rgba[s + 2];
-    }
-  }
-  const idat = zlib.deflateSync(raw);
-
-  // CRC-32 table
-  const tbl = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    tbl[n] = c;
-  }
-  const crc32 = buf => {
-    let c = 0xFFFFFFFF;
-    for (let i = 0; i < buf.length; i++) c = tbl[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
-    return (c ^ 0xFFFFFFFF) >>> 0;
-  };
-  const chunk = (type, data) => {
-    const tp  = Buffer.from(type, 'ascii');
-    const len = Buffer.allocUnsafe(4); len.writeUInt32BE(data.length, 0);
-    const cr  = Buffer.allocUnsafe(4); cr.writeUInt32BE(crc32(Buffer.concat([tp, data])), 0);
-    return Buffer.concat([len, tp, data, cr]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
-  ihdr[8] = 8; ihdr[9] = 2; // 8-bit RGB
-  return Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))
-  ]);
-}
-
-function makeIcon(type /* 'normal' | 'warning' */) {
-  const sz   = 32;
-  const rgba = Buffer.alloc(sz * sz * 4);
-  const bg   = type === 'warning' ? [220, 90, 0] : [0, 90, 180];
-  const fg   = [255, 255, 255];
-
-  // Fill background
-  for (let i = 0; i < sz * sz; i++) {
-    rgba[i * 4] = bg[0]; rgba[i * 4 + 1] = bg[1];
-    rgba[i * 4 + 2] = bg[2]; rgba[i * 4 + 3] = 255;
-  }
-  const px = (x, y, c) => {
-    if (x < 0 || x >= sz || y < 0 || y >= sz) return;
-    const i = (y * sz + x) * 4;
-    rgba[i] = c[0]; rgba[i + 1] = c[1]; rgba[i + 2] = c[2];
-  };
-  const rect = (x1, y1, x2, y2, c) => {
-    for (let x = x1; x <= x2; x++) for (let y = y1; y <= y2; y++) px(x, y, c);
-  };
-
-  if (type === 'warning') {
-    // Exclamation mark  !
-    rect(14, 7, 17, 19, fg);   // bar
-    rect(14, 22, 17, 25, fg);  // dot
-  } else {
-    // Simple calendar icon
-    // Outer box
-    for (let x = 5; x <= 26; x++) { px(x, 5, fg); px(x, 26, fg); }
-    for (let y = 5; y <= 26; y++) { px(5, y, fg); px(26, y, fg); }
-    // Header bar
-    rect(6, 6, 25, 11, fg);
-    // Date grid dots
-    const cols = [9, 14, 19, 24]; const rows = [15, 20, 25];
-    for (const r of rows) for (const c of cols) rect(c - 1, r - 1, c, r, fg);
-  }
-
-  return nativeImage.createFromBuffer(encodePNG(sz, sz, rgba), { scaleFactor: 2 });
-}
+const ICON_PATH     = path.join(__dirname, 'assets', 'icon.ico');
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 const DEFAULTS = {
@@ -111,18 +28,44 @@ const DEFAULTS = {
   syncURL: 'https://hawkinsmultimedia.com.au/endofquarter.html'
 };
 
+function isQuarter(q) {
+  return q && Number.isInteger(q.y) && Number.isInteger(q.m) && Number.isInteger(q.d)
+    && q.m >= 1 && q.m <= 12 && q.d >= 1 && q.d <= 31;
+}
+
+function sanitizeSettings(parsed) {
+  const out = { ...DEFAULTS };
+  if (!parsed || typeof parsed !== 'object') return out;
+
+  if (Array.isArray(parsed.quarters) && parsed.quarters.length === 5
+      && parsed.quarters.every(isQuarter)) {
+    out.quarters = parsed.quarters.map(q => ({ y: q.y, m: q.m, d: q.d }));
+  }
+  if (Array.isArray(parsed.quarterLabels) && parsed.quarterLabels.length === 5
+      && parsed.quarterLabels.every(l => typeof l === 'string')) {
+    out.quarterLabels = [...parsed.quarterLabels];
+  }
+  if (typeof parsed.financialYear === 'string' && parsed.financialYear.trim()) {
+    out.financialYear = parsed.financialYear.trim();
+  }
+  if (typeof parsed.syncURL === 'string' && /^https?:\/\//.test(parsed.syncURL)) {
+    out.syncURL = parsed.syncURL;
+  }
+  return out;
+}
+
 function loadSettings() {
   try {
     if (fs.existsSync(SETTINGS_PATH)) {
-      return Object.assign({}, DEFAULTS, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')));
+      return sanitizeSettings(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')));
     }
-  } catch (_) {}
-  return Object.assign({}, DEFAULTS);
+  } catch (_) { /* fall through to defaults */ }
+  return { ...DEFAULTS };
 }
 
 function saveSettings(s) {
   try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(s, null, 2), 'utf8'); }
-  catch (_) {}
+  catch (_) { /* best-effort */ }
 }
 
 // ─── Quarter calculation ──────────────────────────────────────────────────────
@@ -132,7 +75,7 @@ function todayUTC() {
 }
 
 function quarterEndUTC(q) {
-  return Date.UTC(q.y, q.m - 1, q.d); // month stored 1-based
+  return Date.UTC(q.y, q.m - 1, q.d);
 }
 
 function daysUntil(q) {
@@ -151,21 +94,15 @@ function currentQuarterIdx(quarters) {
   return quarters.length - 1;
 }
 
-// ─── Computed state ───────────────────────────────────────────────────────────
 function computeState(settings) {
   const idx   = currentQuarterIdx(settings.quarters);
   const days  = daysUntil(settings.quarters[idx]);
   const weeks = weeksUntil(days);
   const label = settings.quarterLabels[idx] || `Q${idx + 1}`;
-  const warn  = idx === 4 && days < 70; // Q5 (FY27 Q1) < 70 days
-
-  // Display quarter number: Q5 maps to "1" (it's FY27 Q1)
+  const warn  = idx === 4 && days < 70;
   const displayQ = idx === 4 ? 1 : idx + 1;
-
-  // Tooltip text for tray
   const fy   = settings.quarterLabels[idx] ? settings.quarterLabels[idx].split(' ')[0] : settings.financialYear;
   const tip  = `${fy} Q${displayQ} · ${days}d remaining`;
-
   return { idx, days, weeks, label, warn, displayQ, fy, tip };
 }
 
@@ -184,7 +121,6 @@ function fetchURL(url) {
 }
 
 function parseQuartersFromHTML(html) {
-  // Matches: FY26Q1 : 25/10/2025  (dd/mm/yyyy)
   const re = /FY(\d+)Q(\d)\s*:\s*(\d{2})\/(\d{2})\/(\d{4})/g;
   const found = [];
   let m;
@@ -206,18 +142,14 @@ async function syncFromWeb(settings) {
   const found = parseQuartersFromHTML(html);
   if (found.length === 0) throw new Error('No quarter data found on page');
 
-  // Reset to defaults then populate from web data
-  const newQ  = settings.quarters.map(q => Object.assign({}, q));
+  const newQ  = settings.quarters.map(q => ({ ...q }));
   const newLbl = [...settings.quarterLabels];
 
-  // Determine primary FY from first standard Q1 entry
   const primary = found.find(f => f.q === 1 && f.fyNum < 100);
   if (primary) settings.financialYear = `FY${primary.fyNum}`;
 
   for (const f of found) {
-    // Map Q1–Q4 to slots 0–3; FY(n+1)Q1 goes to slot 4
-    let slot = f.q - 1; // 0-based
-    // If this is NEXT FY's Q1, put it in slot 4
+    let slot = f.q - 1;
     if (primary && f.fyNum > primary.fyNum && f.q === 1) slot = 4;
     if (slot >= 0 && slot < 5) {
       newQ[slot]   = { y: f.y, m: f.mo, d: f.d };
@@ -235,40 +167,40 @@ let tray     = null;
 let popup    = null;
 let settings = null;
 let timer    = null;
-let iconNormal  = null;
-let iconWarning = null;
+let trayIcon = null;
 
-// ─── Tray update ──────────────────────────────────────────────────────────────
-function updateTray() {
-  if (!tray) return;
-  const state = computeState(settings);
-  tray.setImage(state.warn ? iconWarning : iconNormal);
-  tray.setToolTip(state.warn ? `⚠ ${state.tip}` : state.tip);
-}
-
-// ─── Push state to renderer ───────────────────────────────────────────────────
-function pushToRenderer() {
-  if (!popup || !popup.webContents) return;
-  const state = computeState(settings);
-  popup.webContents.send('update', {
-    state,
+// ─── Render helpers ───────────────────────────────────────────────────────────
+function buildPayload() {
+  return {
+    state: computeState(settings),
     settings: {
       quarters:      settings.quarters,
       quarterLabels: settings.quarterLabels,
       financialYear: settings.financialYear,
       syncURL:       settings.syncURL,
       launchAtLogin: app.getLoginItemSettings().openAtLogin
-    }
-  });
+    },
+    appVersion: app.getVersion()
+  };
 }
 
-// ─── Show / hide popup ────────────────────────────────────────────────────────
+function updateTray() {
+  if (!tray) return;
+  const state = computeState(settings);
+  tray.setToolTip(state.warn ? `⚠ ${state.tip}` : state.tip);
+}
+
+function pushToRenderer() {
+  if (!popup || !popup.webContents) return;
+  popup.webContents.send('update', buildPayload());
+}
+
+// ─── Popup positioning ───────────────────────────────────────────────────────
 function getPopupPosition(winW, winH) {
   try {
     const tb = tray.getBounds();
     const { workArea } = screen.getDisplayNearestPoint({ x: tb.x, y: tb.y });
     let x = Math.round(tb.x + tb.width / 2 - winW / 2);
-    // Taskbar at bottom → popup above; taskbar at top → popup below
     const y = tb.y > workArea.height / 2
       ? Math.round(tb.y - winH - 4)
       : Math.round(tb.y + tb.height + 4);
@@ -293,7 +225,7 @@ function hidePopup() {
   if (popup) popup.hide();
 }
 
-// ─── Create popup window ──────────────────────────────────────────────────────
+// ─── Window + tray ───────────────────────────────────────────────────────────
 function createPopup() {
   popup = new BrowserWindow({
     width:       340,
@@ -305,6 +237,7 @@ function createPopup() {
     show:        false,
     alwaysOnTop: true,
     backgroundColor: '#F3F3F3',
+    icon: ICON_PATH,
     webPreferences: {
       preload:          path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -317,12 +250,9 @@ function createPopup() {
   popup.on('blur', hidePopup);
 }
 
-// ─── Create tray ──────────────────────────────────────────────────────────────
 function createTray() {
-  iconNormal  = makeIcon('normal');
-  iconWarning = makeIcon('warning');
-
-  tray = new Tray(iconNormal);
+  trayIcon = nativeImage.createFromPath(ICON_PATH);
+  tray = new Tray(trayIcon);
   tray.setToolTip('End of Quarter Countdown');
 
   tray.on('click', () => {
@@ -330,7 +260,6 @@ function createTray() {
     else { showPopup(); }
   });
 
-  // Right-click context menu (quick quit)
   tray.on('right-click', () => {
     const menu = Menu.buildFromTemplate([
       { label: 'Show', click: showPopup },
@@ -343,7 +272,6 @@ function createTray() {
   updateTray();
 }
 
-// ─── Refresh timer (10 min) ───────────────────────────────────────────────────
 function scheduleRefresh() {
   if (timer) clearInterval(timer);
   timer = setInterval(() => {
@@ -353,21 +281,12 @@ function scheduleRefresh() {
 }
 
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
-ipcMain.handle('get-data', () => {
-  const state = computeState(settings);
-  return {
-    state,
-    settings: {
-      quarters:      settings.quarters,
-      quarterLabels: settings.quarterLabels,
-      financialYear: settings.financialYear,
-      syncURL:       settings.syncURL,
-      launchAtLogin: app.getLoginItemSettings().openAtLogin
-    }
-  };
-});
+ipcMain.handle('get-data', () => buildPayload());
 
 ipcMain.handle('save-quarters', (_, quarters) => {
+  if (!Array.isArray(quarters) || quarters.length !== 5 || !quarters.every(isQuarter)) {
+    throw new Error('Invalid quarters payload');
+  }
   settings.quarters = quarters;
   saveSettings(settings);
   updateTray();
@@ -375,12 +294,14 @@ ipcMain.handle('save-quarters', (_, quarters) => {
 });
 
 ipcMain.handle('save-labels', (_, labels) => {
+  if (!Array.isArray(labels) || labels.length !== 5) return false;
   settings.quarterLabels = labels;
   saveSettings(settings);
   return true;
 });
 
 ipcMain.handle('save-sync-url', (_, url) => {
+  if (typeof url !== 'string' || !/^https?:\/\//.test(url)) return false;
   settings.syncURL = url;
   saveSettings(settings);
   return true;
@@ -391,14 +312,14 @@ ipcMain.handle('sync-from-web', async () => {
     settings = await syncFromWeb(settings);
     saveSettings(settings);
     updateTray();
-    return { ok: true, state: computeState(settings), settings };
+    return { ok: true, ...buildPayload() };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 });
 
 ipcMain.handle('set-launch-at-login', (_, val) => {
-  app.setLoginItemSettings({ openAtLogin: val, openAsHidden: true });
+  app.setLoginItemSettings({ openAtLogin: !!val, openAsHidden: true });
   return app.getLoginItemSettings().openAtLogin;
 });
 
@@ -416,8 +337,6 @@ ipcMain.handle('quit', () => app.quit());
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 app.setName('End of Quarter Countdown');
-// Prevent dock icon on macOS (dev/testing)
-if (process.platform === 'darwin') app.dock && app.dock.hide();
 
 app.whenReady().then(() => {
   settings = loadSettings();
@@ -427,5 +346,4 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', e => e.preventDefault()); // keep running in tray
-
 app.on('second-instance', () => showPopup());
