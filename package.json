@@ -1,6 +1,6 @@
 {
   "name": "end-of-quarter-countdown",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "End of Quarter Countdown — Windows edition",
   "main": "main.js",
   "author": "Ian Hawkins <ian@hawkinsmultimedia.net>",
@@ -20,6 +20,7 @@
     "copyright": "Copyright © 2025 Ian Hawkins",
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico",
       "signAndEditExecutable": false
     },
     "mac": {
@@ -27,6 +28,8 @@
     },
     "nsis": {
       "oneClick": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
       "shortcutName": "End of Quarter Countdown"
     },
     "files": ["main.js", "preload.js", "renderer/**/*", "assets/**/*"],
