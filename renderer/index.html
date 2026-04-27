@@ -10,29 +10,76 @@
 
   <!-- Header -->
   <div id="header">
-    <div id="fyBadge">FY26</div>
-    <div id="headerTitle">End of Quarter Countdown</div>
-    <button class="hdr-btn" id="syncBtn">↺ Sync</button>
-    <button class="hdr-btn" id="editBtn">✎ Edit</button>
-  </div>
-
-  <!-- Countdown -->
-  <div id="countdown">
-    <div id="bigNumber">—</div>
-    <div id="unitLabel">DAYS LEFT</div>
-    <div id="weeksLabel"></div>
-    <div id="quarterLabel"></div>
+    <div id="titleBlock">
+      <div id="titleRow">
+        <span id="titleText">End of Quarter<br/>Countdown</span>
+        <span id="fyBadge">FY—</span>
+      </div>
+      <div id="subtitleText">Q— FISCAL PERFORMANCE WINDOW</div>
+    </div>
+    <div id="headerActions">
+      <button class="icon-btn" id="syncBtn" title="Sync from web">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17.5 19a4.5 4.5 0 1 0 0-9H17a8 8 0 1 0-13.7 6.4"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="editBtn" title="Edit dates">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
   <!-- Warning banner -->
   <div id="warningBanner">
-    ⚠ <b>FY rollover approaching</b> — fewer than 70 days to the next financial year.
-    Please sync from the website or update your quarter dates.
+    <div id="warningText">⚠ <b>FY rollover approaching</b> — fewer than 70 days to the next financial year.</div>
+    <div id="warningActions">
+      <button class="warn-btn" id="warnSyncBtn">Sync Now</button>
+      <button class="warn-btn" id="warnEditBtn">Edit Dates</button>
+    </div>
+  </div>
+
+  <!-- Countdown -->
+  <div id="countdown">
+    <div id="countdownNumberRow">
+      <span id="bigNumber">—</span>
+      <span id="daysWord">DAYS</span>
+    </div>
+    <div id="weeksLabel"></div>
+    <div id="quarterLabel"></div>
+    <div id="endDateLabel"></div>
+  </div>
+
+  <!-- Quarter progress -->
+  <div id="progressSection">
+    <div id="progressHeader">
+      <span class="progress-label">QUARTER PROGRESS</span>
+      <span id="progressPct">—%</span>
+    </div>
+    <div id="progressBar"><div id="progressFill"></div></div>
+    <div id="progressFooter">
+      <span id="dayStart">DAY —</span>
+      <span id="dayEnd">DAY —</span>
+    </div>
+  </div>
+
+  <!-- Info cards -->
+  <div id="cards">
+    <div class="info-card">
+      <div class="card-label">WEEK NUMBER</div>
+      <div class="card-value" id="weekNumber">Week —</div>
+      <div class="card-sub">of current quarter</div>
+    </div>
+    <div class="info-card">
+      <div class="card-label">FY END DATE</div>
+      <div class="card-value" id="fyEndDate">— —</div>
+      <div class="card-sub" id="fyEndSub">— days remaining</div>
+    </div>
   </div>
 
   <!-- Editor (hidden by default) -->
   <div id="editor">
-    <!-- 5 quarter rows (labels set by JS) -->
     <div class="q-row"><label id="lbl0">FY26 Q1</label><input type="date" id="d0" /></div>
     <div class="q-row"><label id="lbl1">FY26 Q2</label><input type="date" id="d1" /></div>
     <div class="q-row"><label id="lbl2">FY26 Q3</label><input type="date" id="d2" /></div>
@@ -42,20 +89,29 @@
       <label for="urlInput">Sync URL</label>
       <input type="text" id="urlInput" placeholder="https://..." />
     </div>
+    <div id="lastSyncRow">Last synced: <span id="lastSyncTime">never</span></div>
     <div id="syncStatus"></div>
     <button id="saveBtn">Save Dates</button>
   </div>
 
+  <!-- Business days toggle -->
+  <div id="bdRow">
+    <label class="check-row">
+      <input type="checkbox" id="bdCheck" />
+      <span>Business days (Mon&ndash;Fri)</span>
+    </label>
+  </div>
+
   <!-- Footer -->
   <div id="footer">
-    <div id="loginRow">
+    <label class="check-row">
       <input type="checkbox" id="loginCheck" />
-      <label for="loginCheck">Launch at Login</label>
-    </div>
+      <span id="loginLabel">Launch<br/>at Login</span>
+    </label>
     <div id="versionInfo">
-      <span id="versionLabel">v—</span> · by <a id="authorLink" href="#">Ian Hawkins</a>
+      <span id="versionLabel">v—</span> &middot; by <a id="authorLink" href="#">Ian Hawkins</a>
     </div>
-    <button id="quitBtn">Quit</button>
+    <button id="quitBtn">QUIT</button>
   </div>
 
   <script src="renderer.js"></script>

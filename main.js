@@ -25,7 +25,9 @@ const DEFAULTS = {
   ],
   quarterLabels: ['FY26 Q1', 'FY26 Q2', 'FY26 Q3', 'FY26 Q4', 'FY27 Q1'],
   financialYear: 'FY26',
-  syncURL: 'https://hawkinsmultimedia.com.au/endofquarter.html'
+  syncURL: 'https://hawkinsmultimedia.com.au/endofquarter.html',
+  businessDays: false,
+  lastSync: null
 };
 
 function isQuarter(q) {
@@ -51,6 +53,12 @@ function sanitizeSettings(parsed) {
   if (typeof parsed.syncURL === 'string' && /^https?:\/\//.test(parsed.syncURL)) {
     out.syncURL = parsed.syncURL;
   }
+  if (typeof parsed.businessDays === 'boolean') {
+    out.businessDays = parsed.businessDays;
+  }
+  if (typeof parsed.lastSync === 'string' || parsed.lastSync === null) {
+    out.lastSync = parsed.lastSync;
+  }
   return out;
 }
 
@@ -68,42 +76,119 @@ function saveSettings(s) {
   catch (_) { /* best-effort */ }
 }
 
-// ─── Quarter calculation ──────────────────────────────────────────────────────
-function todayUTC() {
+// ─── Date helpers (local time) ───────────────────────────────────────────────
+const MS_PER_DAY = 86_400_000;
+
+function todayLocal() {
   const t = new Date();
-  return Date.UTC(t.getFullYear(), t.getMonth(), t.getDate());
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate());
 }
 
-function quarterEndUTC(q) {
-  return Date.UTC(q.y, q.m - 1, q.d);
+function quarterEndDate(q) {
+  return new Date(q.y, q.m - 1, q.d);
 }
 
-function daysUntil(q) {
-  return Math.max(0, Math.round((quarterEndUTC(q) - todayUTC()) / 86_400_000));
+function daysBetween(a, b) {
+  return Math.round((b.getTime() - a.getTime()) / MS_PER_DAY);
 }
 
-function weeksUntil(days) {
-  return Math.floor(days / 7);
+function businessDaysBetween(a, b) {
+  if (b <= a) return 0;
+  let count = 0;
+  const cur = new Date(a.getTime());
+  while (cur < b) {
+    const dow = cur.getDay();
+    if (dow !== 0 && dow !== 6) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
 }
 
+function addDays(d, n) {
+  const out = new Date(d.getTime());
+  out.setDate(out.getDate() + n);
+  return out;
+}
+
+function formatLongDate(d) {
+  return d.toLocaleDateString('en-AU', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+}
+
+function formatShortDate(d) {
+  return d.toLocaleDateString('en-AU', {
+    day: 'numeric', month: 'short', year: 'numeric'
+  });
+}
+
+function formatSyncTime(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleString('en-AU', {
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true
+    });
+  } catch (_) { return null; }
+}
+
+// ─── Quarter math ─────────────────────────────────────────────────────────────
 function currentQuarterIdx(quarters) {
-  const now = todayUTC();
+  const today = todayLocal();
   for (let i = 0; i < quarters.length; i++) {
-    if (quarterEndUTC(quarters[i]) >= now) return i;
+    if (quarterEndDate(quarters[i]) >= today) return i;
   }
   return quarters.length - 1;
 }
 
+function quarterStart(quarters, idx) {
+  if (idx > 0) {
+    return addDays(quarterEndDate(quarters[idx - 1]), 1);
+  }
+  // First quarter — fall back to 90 days before its end
+  return addDays(quarterEndDate(quarters[0]), -90);
+}
+
+// ─── State for renderer ──────────────────────────────────────────────────────
 function computeState(settings) {
-  const idx   = currentQuarterIdx(settings.quarters);
-  const days  = daysUntil(settings.quarters[idx]);
-  const weeks = weeksUntil(days);
-  const label = settings.quarterLabels[idx] || `Q${idx + 1}`;
-  const warn  = idx === 4 && days < 70;
-  const displayQ = idx === 4 ? 1 : idx + 1;
-  const fy   = settings.quarterLabels[idx] ? settings.quarterLabels[idx].split(' ')[0] : settings.financialYear;
-  const tip  = `${fy} Q${displayQ} · ${days}d remaining`;
-  return { idx, days, weeks, label, warn, displayQ, fy, tip };
+  const quarters = settings.quarters;
+  const today    = todayLocal();
+  const idx      = currentQuarterIdx(quarters);
+  const qEnd     = quarterEndDate(quarters[idx]);
+  const qStart   = quarterStart(quarters, idx);
+
+  const totalDays = Math.max(1, daysBetween(qStart, qEnd) + 1);
+  const dayOfQ    = Math.min(totalDays, Math.max(1, daysBetween(qStart, today) + 1));
+
+  const calendarDaysRemaining = Math.max(0, daysBetween(today, qEnd));
+  const businessDaysRemaining = businessDaysBetween(today, qEnd);
+
+  const days  = settings.businessDays ? businessDaysRemaining : calendarDaysRemaining;
+  const weeks = Math.floor(days / (settings.businessDays ? 5 : 7));
+
+  const weekInQ = Math.max(1, Math.ceil(dayOfQ / 7));
+  const progressPct = Math.min(100, Math.round((dayOfQ / totalDays) * 100));
+
+  const warn      = idx === 4 && calendarDaysRemaining < 70;
+  const displayQ  = idx === 4 ? 1 : idx + 1;
+  const fy        = settings.quarterLabels[idx] ? settings.quarterLabels[idx].split(' ')[0] : settings.financialYear;
+  const bdSuffix  = settings.businessDays ? 'bd' : '';
+  const tip       = `${fy} Q${displayQ} · ${days}d${bdSuffix ? ' ' + bdSuffix : ''} remaining`;
+
+  return {
+    idx, days, weeks, warn, displayQ, fy, tip,
+    businessDays:    settings.businessDays,
+    qEndLong:        formatLongDate(qEnd),
+    qEndShort:       formatShortDate(qEnd),
+    dayOfQuarter:    dayOfQ,
+    totalQuarterDays: totalDays,
+    weekInQuarter:   weekInQ,
+    progressPct,
+    calendarDaysRemaining,
+    fyEndLong:       formatLongDate(quarterEndDate(quarters[3])),
+    fyEndShort:      formatShortDate(quarterEndDate(quarters[3])),
+    fyDaysRemaining: Math.max(0, daysBetween(today, quarterEndDate(quarters[3])))
+  };
 }
 
 // ─── Web sync ─────────────────────────────────────────────────────────────────
@@ -138,11 +223,11 @@ function parseQuartersFromHTML(html) {
 }
 
 async function syncFromWeb(settings) {
-  const html = await fetchURL(settings.syncURL);
+  const html  = await fetchURL(settings.syncURL);
   const found = parseQuartersFromHTML(html);
   if (found.length === 0) throw new Error('No quarter data found on page');
 
-  const newQ  = settings.quarters.map(q => ({ ...q }));
+  const newQ   = settings.quarters.map(q => ({ ...q }));
   const newLbl = [...settings.quarterLabels];
 
   const primary = found.find(f => f.q === 1 && f.fyNum < 100);
@@ -159,6 +244,7 @@ async function syncFromWeb(settings) {
 
   settings.quarters      = newQ;
   settings.quarterLabels = newLbl;
+  settings.lastSync      = new Date().toISOString();
   return settings;
 }
 
@@ -167,9 +253,9 @@ let tray     = null;
 let popup    = null;
 let settings = null;
 let timer    = null;
-let trayIcon = null;
+let lastTZ   = null;
 
-// ─── Render helpers ───────────────────────────────────────────────────────────
+// ─── Payload + tray ──────────────────────────────────────────────────────────
 function buildPayload() {
   return {
     state: computeState(settings),
@@ -178,7 +264,10 @@ function buildPayload() {
       quarterLabels: settings.quarterLabels,
       financialYear: settings.financialYear,
       syncURL:       settings.syncURL,
-      launchAtLogin: app.getLoginItemSettings().openAtLogin
+      businessDays:  settings.businessDays,
+      launchAtLogin: app.getLoginItemSettings().openAtLogin,
+      lastSync:      settings.lastSync,
+      lastSyncDisplay: formatSyncTime(settings.lastSync)
     },
     appVersion: app.getVersion()
   };
@@ -228,15 +317,15 @@ function hidePopup() {
 // ─── Window + tray ───────────────────────────────────────────────────────────
 function createPopup() {
   popup = new BrowserWindow({
-    width:       340,
-    height:      260,
+    width:       360,
+    height:      720,
     frame:       false,
     resizable:   false,
     movable:     false,
     skipTaskbar: true,
     show:        false,
     alwaysOnTop: true,
-    backgroundColor: '#F3F3F3',
+    backgroundColor: '#161616',
     icon: ICON_PATH,
     webPreferences: {
       preload:          path.join(__dirname, 'preload.js'),
@@ -251,8 +340,7 @@ function createPopup() {
 }
 
 function createTray() {
-  trayIcon = nativeImage.createFromPath(ICON_PATH);
-  tray = new Tray(trayIcon);
+  tray = new Tray(nativeImage.createFromPath(ICON_PATH));
   tray.setToolTip('End of Quarter Countdown');
 
   tray.on('click', () => {
@@ -272,15 +360,22 @@ function createTray() {
   updateTray();
 }
 
+// ─── Refresh loop (1 min) — also detects timezone changes ────────────────────
 function scheduleRefresh() {
   if (timer) clearInterval(timer);
+  lastTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   timer = setInterval(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz !== lastTZ) {
+      lastTZ = tz; // timezone change — recompute immediately
+    }
     updateTray();
     if (popup && popup.isVisible()) pushToRenderer();
-  }, 10 * 60 * 1000);
+  }, 60 * 1000);
 }
 
-// ─── IPC handlers ─────────────────────────────────────────────────────────────
+// ─── IPC ──────────────────────────────────────────────────────────────────────
 ipcMain.handle('get-data', () => buildPayload());
 
 ipcMain.handle('save-quarters', (_, quarters) => {
@@ -307,6 +402,13 @@ ipcMain.handle('save-sync-url', (_, url) => {
   return true;
 });
 
+ipcMain.handle('set-business-days', (_, val) => {
+  settings.businessDays = !!val;
+  saveSettings(settings);
+  updateTray();
+  return settings.businessDays;
+});
+
 ipcMain.handle('sync-from-web', async () => {
   try {
     settings = await syncFromWeb(settings);
@@ -325,8 +427,8 @@ ipcMain.handle('set-launch-at-login', (_, val) => {
 
 ipcMain.handle('resize-window', (_, height) => {
   if (!popup) return;
-  const { x, y } = getPopupPosition(340, height);
-  popup.setBounds({ x, y, width: 340, height });
+  const { x, y } = getPopupPosition(360, height);
+  popup.setBounds({ x, y, width: 360, height });
 });
 
 ipcMain.handle('open-email', () => {
@@ -345,5 +447,5 @@ app.whenReady().then(() => {
   scheduleRefresh();
 });
 
-app.on('window-all-closed', e => e.preventDefault()); // keep running in tray
+app.on('window-all-closed', e => e.preventDefault());
 app.on('second-instance', () => showPopup());
