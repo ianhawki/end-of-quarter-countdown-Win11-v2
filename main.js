@@ -29,18 +29,29 @@ function log(...parts) {
   } catch (_) { /* best-effort */ }
 }
 
-// One-time migration: copy settings.json from any earlier folder layout
-// into the canonical USER_DATA_DIR, then remove the legacy folder.
+// Migration runs every launch:
+//   1. If new settings.json is missing and legacy one exists, copy it over.
+//   2. If the legacy folder still exists at all (cache files held open by an
+//      old process during the 2.5.2 install, etc.), retry removing it. Will
+//      eventually succeed once the old app process is fully gone.
 function migrateLegacyUserData() {
+  const legacyDir  = path.join(app.getPath('appData'), 'end-of-quarter-countdown');
+  const legacyFile = path.join(legacyDir, 'settings.json');
+
   try {
-    if (fs.existsSync(SETTINGS_PATH)) { log('migrate: skip (new exists)'); return; }
-    const legacyDir  = path.join(app.getPath('appData'), 'end-of-quarter-countdown');
-    const legacyFile = path.join(legacyDir, 'settings.json');
-    if (!fs.existsSync(legacyFile)) { log('migrate: skip (no legacy)'); return; }
-    fs.copyFileSync(legacyFile, SETTINGS_PATH);
-    log('migrate: copied', legacyFile, '->', SETTINGS_PATH);
-    try { fs.rmSync(legacyDir, { recursive: true, force: true }); log('migrate: removed legacy dir'); }
-    catch (e) { log('migrate: legacy rm failed:', e.message); }
+    if (!fs.existsSync(SETTINGS_PATH) && fs.existsSync(legacyFile)) {
+      fs.copyFileSync(legacyFile, SETTINGS_PATH);
+      log('migrate: copied', legacyFile, '->', SETTINGS_PATH);
+    }
+
+    if (fs.existsSync(legacyDir)) {
+      try {
+        fs.rmSync(legacyDir, { recursive: true, force: true });
+        log('migrate: removed legacy dir');
+      } catch (e) {
+        log('migrate: legacy rm failed (will retry next launch):', e.message);
+      }
+    }
   } catch (e) { log('migrate: error:', e.message); }
 }
 
