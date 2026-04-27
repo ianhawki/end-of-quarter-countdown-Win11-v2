@@ -65,10 +65,10 @@ function sanitizeSettings(parsed) {
 function loadSettings() {
   try {
     if (fs.existsSync(SETTINGS_PATH)) {
-      return sanitizeSettings(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')));
+      return { settings: sanitizeSettings(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))), firstRun: false };
     }
   } catch (_) { /* fall through to defaults */ }
-  return { ...DEFAULTS };
+  return { settings: { ...DEFAULTS }, firstRun: true };
 }
 
 function saveSettings(s) {
@@ -535,12 +535,30 @@ ipcMain.handle('quit', () => app.quit());
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 app.setName('End of Quarter Countdown');
 
+async function firstRunAutoSync() {
+  try {
+    settings = await syncFromWeb(settings);
+    saveSettings(settings);
+    updateTray();
+    pushToRenderer();
+  } catch (_) {
+    // Silent fallback to defaults — user can sync manually later.
+    // Persist defaults so we don't try to auto-sync again on next launch.
+    saveSettings(settings);
+  }
+}
+
 app.whenReady().then(() => {
-  settings = loadSettings();
+  const loaded = loadSettings();
+  settings = loaded.settings;
   createTray();
   createPopup();
   createTrayRenderer();
   scheduleRefresh();
+
+  if (loaded.firstRun) {
+    setTimeout(firstRunAutoSync, 1500);
+  }
 });
 
 app.on('window-all-closed', e => e.preventDefault());
