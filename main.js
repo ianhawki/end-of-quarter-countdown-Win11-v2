@@ -195,14 +195,51 @@ function computeState(settings) {
 // ─── Web sync ─────────────────────────────────────────────────────────────────
 function fetchURL(url) {
   return new Promise((resolve, reject) => {
-    const mod = url.startsWith('https') ? https : http;
-    const req = mod.get(url, { timeout: 10000 }, res => {
+    const mod  = url.startsWith('https') ? https : http;
+    const opts = {
+      headers: { 'User-Agent': `EndOfQuarterCountdown/${app.getVersion()}` }
+    };
+    let settled = false;
+    const finish = (err, body) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err); else resolve(body);
+    };
+
+    const deadline = setTimeout(() => {
+      try { req.destroy(); } catch (_) {}
+      finish(new Error(`Could not reach ${new URL(url).hostname} within 15 seconds — check your network connection (VPN, proxy or firewall may be blocking it)`));
+    }, 15000);
+
+    const req = mod.get(url, opts, res => {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        clearTimeout(deadline);
+        res.resume();
+        finish(new Error(`Server returned HTTP ${res.statusCode} for ${url}`));
+        return;
+      }
       let body = '';
       res.on('data', d => body += d);
-      res.on('end', () => resolve(body));
+      res.on('end', () => { clearTimeout(deadline); finish(null, body); });
+      res.on('error', e => { clearTimeout(deadline); finish(e); });
     });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
+
+    req.on('error', e => {
+      clearTimeout(deadline);
+      const host = (() => { try { return new URL(url).hostname; } catch (_) { return url; } })();
+      let msg;
+      switch (e.code) {
+        case 'ENOTFOUND':    msg = `Could not resolve ${host} — DNS lookup failed`; break;
+        case 'ECONNREFUSED': msg = `Connection refused by ${host}`; break;
+        case 'ECONNRESET':   msg = `Connection to ${host} was reset`; break;
+        case 'ETIMEDOUT':    msg = `Connection to ${host} timed out — check VPN/firewall`; break;
+        case 'CERT_HAS_EXPIRED':
+        case 'UNABLE_TO_VERIFY_LEAF_SIGNATURE':
+          msg = `SSL certificate problem on ${host}: ${e.code}`; break;
+        default: msg = `Network error reaching ${host}: ${e.message}`;
+      }
+      finish(new Error(msg));
+    });
   });
 }
 
