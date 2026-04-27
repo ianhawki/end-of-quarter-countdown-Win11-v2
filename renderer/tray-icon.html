@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="c" width="32" height="32"></canvas>
+  <script>
+    'use strict';
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y,     x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x,     y + h, r);
+      ctx.arcTo(x,     y + h, x,     y,     r);
+      ctx.arcTo(x,     y,     x + w, y,     r);
+      ctx.closePath();
+    }
+
+    function draw({ days, warn, bd }) {
+      ctx.clearRect(0, 0, 32, 32);
+
+      // Rounded square background
+      ctx.fillStyle = warn ? '#DC5A00' : '#0078D4';
+      roundRect(0, 0, 32, 32, 6);
+      ctx.fill();
+
+      // Number text
+      const text = String(days);
+      let fontSize;
+      if (text.length === 1)      fontSize = 22;
+      else if (text.length === 2) fontSize = 19;
+      else if (text.length === 3) fontSize = 14;
+      else                        fontSize = 11;
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `900 ${fontSize}px "Arial Black", Arial, sans-serif`;
+
+      const yCenter = bd ? 13 : 17;
+      ctx.fillText(text, 16, yCenter);
+
+      // Optional "bd" subscript when business-days mode is on
+      if (bd) {
+        ctx.font = '700 9px Arial, sans-serif';
+        ctx.fillText('bd', 16, 25);
+      }
+    }
+
+    window.trayApi.onRender(({ id, days, warn, bd }) => {
+      try {
+        draw({ days, warn, bd });
+        const dataUrl = canvas.toDataURL('image/png');
+        window.trayApi.reportRendered(id, dataUrl);
+      } catch (e) {
+        window.trayApi.reportRendered(id, null);
+      }
+    });
+  </script>
+</body>
+</html>

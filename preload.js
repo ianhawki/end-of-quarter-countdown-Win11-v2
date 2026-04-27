@@ -14,3 +14,8 @@ contextBridge.exposeInMainWorld('api', {
   quit:            ()      => ipcRenderer.invoke('quit'),
   onUpdate:        (cb)    => ipcRenderer.on('update', (_, data) => cb(data))
 });
+
+contextBridge.exposeInMainWorld('trayApi', {
+  onRender:        (cb)         => ipcRenderer.on('render-tray-icon', (_, data) => cb(data)),
+  reportRendered:  (id, dataUrl) => ipcRenderer.invoke('tray-icon-rendered', { id, dataUrl })
+});

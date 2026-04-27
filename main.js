@@ -249,11 +249,14 @@ async function syncFromWeb(settings) {
 }
 
 // ─── App globals ──────────────────────────────────────────────────────────────
-let tray     = null;
-let popup    = null;
-let settings = null;
-let timer    = null;
-let lastTZ   = null;
+let tray         = null;
+let popup        = null;
+let trayRenderer = null;
+let settings     = null;
+let timer        = null;
+let lastTZ       = null;
+let trayReqId    = 0;
+const pendingTrayRenders = new Map();
 
 // ─── Payload + tray ──────────────────────────────────────────────────────────
 function buildPayload() {
@@ -273,10 +276,33 @@ function buildPayload() {
   };
 }
 
-function updateTray() {
+function renderTrayIcon(days, warn, bd) {
+  if (!trayRenderer || !trayRenderer.webContents || trayRenderer.webContents.isLoading()) {
+    return Promise.resolve(null);
+  }
+  return new Promise(resolve => {
+    const id = ++trayReqId;
+    pendingTrayRenders.set(id, resolve);
+    trayRenderer.webContents.send('render-tray-icon', { id, days, warn, bd });
+    setTimeout(() => {
+      if (pendingTrayRenders.has(id)) {
+        pendingTrayRenders.delete(id);
+        resolve(null);
+      }
+    }, 2000);
+  });
+}
+
+async function updateTray() {
   if (!tray) return;
   const state = computeState(settings);
   tray.setToolTip(state.warn ? `⚠ ${state.tip}` : state.tip);
+
+  const dataUrl = await renderTrayIcon(state.days, state.warn, state.businessDays);
+  if (dataUrl) {
+    const img = nativeImage.createFromDataURL(dataUrl);
+    if (!img.isEmpty()) tray.setImage(img);
+  }
 }
 
 function pushToRenderer() {
@@ -339,6 +365,28 @@ function createPopup() {
   popup.on('blur', hidePopup);
 }
 
+function createTrayRenderer() {
+  trayRenderer = new BrowserWindow({
+    width:       64,
+    height:      64,
+    show:        false,
+    frame:       false,
+    skipTaskbar: true,
+    transparent: true,
+    webPreferences: {
+      preload:          path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration:  false,
+      offscreen:        false
+    }
+  });
+  trayRenderer.loadFile(path.join(__dirname, 'renderer', 'tray-icon.html'));
+  trayRenderer.webContents.on('did-finish-load', () => {
+    // Refresh tray now that the renderer is ready to draw.
+    updateTray();
+  });
+}
+
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(ICON_PATH));
   tray.setToolTip('End of Quarter Countdown');
@@ -376,6 +424,15 @@ function scheduleRefresh() {
 }
 
 // ─── IPC ──────────────────────────────────────────────────────────────────────
+ipcMain.handle('tray-icon-rendered', (_, { id, dataUrl }) => {
+  const resolve = pendingTrayRenders.get(id);
+  if (resolve) {
+    pendingTrayRenders.delete(id);
+    resolve(dataUrl);
+  }
+  return true;
+});
+
 ipcMain.handle('get-data', () => buildPayload());
 
 ipcMain.handle('save-quarters', (_, quarters) => {
@@ -444,6 +501,7 @@ app.whenReady().then(() => {
   settings = loadSettings();
   createTray();
   createPopup();
+  createTrayRenderer();
   scheduleRefresh();
 });
 
