@@ -11,28 +11,37 @@ const http  = require('http');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 
-// Set the app name BEFORE computing userData path so the settings folder
-// uses the display name ("End of Quarter Countdown") instead of the npm
-// package name ("end-of-quarter-countdown"). Matches the macOS edition.
+// Force userData to live under the display name, regardless of what the
+// packaged package.json says. setName alone is not enough — Electron
+// resolves paths from productName/name at app init, before our code runs.
 app.setName('End of Quarter Countdown');
+const USER_DATA_DIR = path.join(app.getPath('appData'), 'End of Quarter Countdown');
+app.setPath('userData', USER_DATA_DIR);
+try { fs.mkdirSync(USER_DATA_DIR, { recursive: true }); } catch (_) {}
 
-const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
+const SETTINGS_PATH = path.join(USER_DATA_DIR, 'settings.json');
+const LOG_PATH      = path.join(USER_DATA_DIR, 'app.log');
 const ICON_PATH     = path.join(__dirname, 'assets', 'icon.ico');
 
-// One-time migration for users who installed an earlier build (where the
-// folder was named end-of-quarter-countdown). Copies their settings.json
-// into the new location and removes the old folder. Best-effort; safe to
-// run on every launch.
+function log(...parts) {
+  try {
+    fs.appendFileSync(LOG_PATH, `[${new Date().toISOString()}] ${parts.join(' ')}\n`);
+  } catch (_) { /* best-effort */ }
+}
+
+// One-time migration: copy settings.json from any earlier folder layout
+// into the canonical USER_DATA_DIR, then remove the legacy folder.
 function migrateLegacyUserData() {
   try {
+    if (fs.existsSync(SETTINGS_PATH)) { log('migrate: skip (new exists)'); return; }
     const legacyDir  = path.join(app.getPath('appData'), 'end-of-quarter-countdown');
     const legacyFile = path.join(legacyDir, 'settings.json');
-    if (fs.existsSync(SETTINGS_PATH)) return;   // new location already populated
-    if (!fs.existsSync(legacyFile))   return;   // nothing to migrate
-    fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
+    if (!fs.existsSync(legacyFile)) { log('migrate: skip (no legacy)'); return; }
     fs.copyFileSync(legacyFile, SETTINGS_PATH);
-    fs.rmSync(legacyDir, { recursive: true, force: true });
-  } catch (_) { /* best-effort */ }
+    log('migrate: copied', legacyFile, '->', SETTINGS_PATH);
+    try { fs.rmSync(legacyDir, { recursive: true, force: true }); log('migrate: removed legacy dir'); }
+    catch (e) { log('migrate: legacy rm failed:', e.message); }
+  } catch (e) { log('migrate: error:', e.message); }
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
@@ -358,10 +367,17 @@ async function updateTray() {
   tray.setToolTip(state.warn ? `⚠ ${state.tip}` : state.tip);
 
   const dataUrl = await renderTrayIcon(state.days, state.warn, state.businessDays);
-  if (dataUrl) {
-    const img = nativeImage.createFromDataURL(dataUrl);
-    if (!img.isEmpty()) tray.setImage(img);
+  if (!dataUrl) {
+    log('updateTray: no dataUrl, keeping fallback icon');
+    return;
   }
+  const img = nativeImage.createFromDataURL(dataUrl);
+  if (img.isEmpty()) {
+    log('updateTray: dataUrl decoded to empty image, len=', dataUrl.length);
+    return;
+  }
+  tray.setImage(img);
+  log('updateTray: painted icon set, days=', state.days);
 }
 
 function pushToRenderer() {
@@ -431,7 +447,6 @@ function createTrayRenderer() {
     show:        false,
     frame:       false,
     skipTaskbar: true,
-    transparent: true,
     webPreferences: {
       preload:          path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -441,8 +456,11 @@ function createTrayRenderer() {
   });
   trayRenderer.loadFile(path.join(__dirname, 'renderer', 'tray-icon.html'));
   trayRenderer.webContents.on('did-finish-load', () => {
-    // Refresh tray now that the renderer is ready to draw.
-    updateTray();
+    log('trayRenderer: did-finish-load');
+    setTimeout(() => updateTray(), 100);
+  });
+  trayRenderer.webContents.on('did-fail-load', (_, code, desc) => {
+    log('trayRenderer: did-fail-load', code, desc);
   });
 }
 
@@ -568,8 +586,10 @@ async function firstRunAutoSync() {
 }
 
 app.whenReady().then(() => {
+  log('startup: userData=', app.getPath('userData'));
   migrateLegacyUserData();
   const loaded = loadSettings();
+  log('loadSettings: firstRun=', loaded.firstRun);
   settings = loaded.settings;
   createTray();
   createPopup();
